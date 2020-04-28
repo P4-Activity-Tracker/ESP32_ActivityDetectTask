@@ -59,6 +59,13 @@ float gyroRollingData[bufferSize];
 // Lav statisk data buffer
 float gyroStaticData[bufferSize];
 
+#define sMIN 0
+#define sMAX 1
+// Static accelerometer min og max
+int16_t acclStaticMinMax[2] = {0, 0}; // [Min, Max]
+// Static gyroskop min og max
+int16_t gyroStaticMinMax[2] = {0, 0}; // [Min, Max]
+
 // Finder maksimal værdi i array
 float maxInArray(float *buffPointer, uint16_t buffSize) {
 	float maxValue = *buffPointer;
@@ -88,9 +95,9 @@ void absArray(float *buffPointer, uint16_t buffSize) {
 	}
 }
 
-void normalizeArray(float *buffPointer, uint16_t buffSize){
-	float maxValue = maxInArray(buffPointer, buffSize);
-	float minValue = minInArray(buffPointer, buffSize);
+void normalizeArray(float *buffPointer, uint16_t buffSize, float minValue, float maxValue){
+	//float maxValue = maxInArray(buffPointer, buffSize);
+	//float minValue = minInArray(buffPointer, buffSize);
 	for(int i=0; i<buffSize; i++) {
 		*(buffPointer+i) = (*(buffPointer+i) - minValue) / (maxValue - minValue);
 	}
@@ -169,6 +176,44 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 	return activity;
 }
 
+// Tjek om ny accl og gyro værdi er ny maks
+void isNewMax(float newAccl, float newGyro) {
+	// Acclerometer
+	if (newAccl > acclStaticMinMax[sMAX]) {
+		// Gem ny max værdi
+		acclStaticMinMax[sMAX] = newAccl;
+	}
+	// Gyroskop
+	if (newGyro > gyroStaticMinMax[sMAX]) {
+		// Gem ny max værdi
+		gyroStaticMinMax[sMAX] = newGyro;
+	}
+}
+
+// Tjek om ny accl og gyro værdi er ny min
+void isNewMin(float newAccl, float newGyro) {
+	// Acclerometer
+	if (newAccl < acclStaticMinMax[sMIN]) {
+		// Gem ny min værdi
+		acclStaticMinMax[sMIN] = newAccl;
+	}
+	// Gyroskop
+	if (newGyro < gyroStaticMinMax[sMIN]) {
+		// Gem ny min værdi
+		gyroStaticMinMax[sMIN] = newGyro;
+	}	
+}
+
+// Reset min og max pladsholder
+void resetMinMax() {
+	// Reset accelerometer min og max
+	acclStaticMinMax[sMIN] = 0;
+	acclStaticMinMax[sMAX] = 0;
+	// Reset gyroskop min og max
+	gyroStaticMinMax[sMIN] = 0;
+	gyroStaticMinMax[sMAX] = 0;
+}
+
 // Debug functions
 void readTwoBytes(int16_t *val) {
 	if (Serial.available() > 1) {
@@ -193,6 +238,7 @@ void getAcclDataFromSerialM6(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx,
 	}
 }
 
+// Setup
 void setup() {
 
 	Serial.begin(115200);
@@ -201,10 +247,10 @@ void setup() {
 	xTaskCreate(
 		sampleActivityDataTask,
 		"Sample activity data",
-		1024,
+		1024, // Hukommelses mængde
 		NULL,
-		2,
-		&sadTaskHandler
+		2, // Priotitet
+		&sadTaskHandler // Håndtag til task
 	);
 	// Lav data behandler task
 	xTaskCreate(
@@ -212,14 +258,15 @@ void setup() {
 		"Activity data handler",
 		8192,
 		NULL,
-		1,
-		&padTaskHandler
+		1, // Priotitet
+		&padTaskHandler // Håndtag til task
 	);
 
 	delay(100);
 	vTaskResume(sadTaskHandler);
 }
 
+// Main loop
 void loop() {
 
 }
@@ -240,7 +287,7 @@ void sampleActivityDataTask(void *pvParamaters) {
 	// Tæller til at holde styr på nuværende index af data buffer
 	uint16_t dataIndex = 0;
 	// Sæt task på pause indtil start signal gives
-	vTaskSuspend(NULL);
+	vTaskSuspend(NULL);	
 	// Task loop
 	for (;;) {
 		// Sample data, ÆNDRE DENNE TIL MPU6050 GETMOTION6
@@ -248,10 +295,15 @@ void sampleActivityDataTask(void *pvParamaters) {
 		// Beregn produktet af det samplede værdier
 		acclRollingData[dataIndex] = calculatePythagoras(ax, ay, az);
 		gyroRollingData[dataIndex] = calculatePythagoras(ax, ay, az);
+		// Tjek om ny min eller max
+		isNewMin(acclRollingData[dataIndex], gyroRollingData[dataIndex]);
+		isNewMax(acclRollingData[dataIndex], gyroRollingData[dataIndex]);
 		// Tjek om det er tid til at lave databehandling
 		if (dataIndex >= bufferSize - 1) {
 			// Sæt data index tilbage til 0
 			dataIndex = 0;
+			// Sæt min og max tilbage til nul
+			resetMinMax();
 			// Kopier alt data fra rolling buffer til static buffer
 			copyArrayData(acclRollingData, acclStaticData, bufferSize);
 			copyArrayData(gyroRollingData, gyroStaticData, bufferSize);
@@ -283,13 +335,12 @@ void processActivityDataTask(void *pvParameters) {
 	for (;;) {
 		Serial.println("Running data processing");
 		// Normaliser accelerometer- og gyroskopdata
-		normalizeArray(acclStaticData, bufferSize);
-		normalizeArray(gyroStaticData, bufferSize);
+		normalizeArray(acclStaticData, bufferSize, acclStaticMinMax[sMIN], acclStaticMinMax[sMAX]);
+		normalizeArray(gyroStaticData, bufferSize, gyroStaticMinMax[sMIN], gyroStaticMinMax[sMAX]);
 		// FFT data
 		float acclFFT[singleFFTbufferSize];
 		float gyroFFT[singleFFTbufferSize];
 
-		// Normaliser FFT data
 
 		// Fjern DC fra FFT
 
