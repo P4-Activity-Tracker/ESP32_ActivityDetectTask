@@ -1,0 +1,38 @@
+
+// Finder absolutte værdi i array
+void absArray(float *buffPointer, uint16_t buffSize) {
+	for (int i=0; i < buffSize; i++) {
+		*(buffPointer+i) = abs(*(buffPointer+i));
+	}
+}
+
+// Finder maksimal værdi i array
+float maxInArray(float *buffPointer, uint16_t buffSize) {
+	float maxValue = *buffPointer;
+	for (uint16_t i = 1; i < buffSize; i++) {
+		if (maxValue < *(buffPointer+i)) {
+			maxValue = *(buffPointer+i);
+		}
+	}
+	return maxValue;	
+}
+
+// Finder minimal værdi i array
+float minInArray(float *buffPointer, uint16_t buffSize) {
+	float minValue = *buffPointer;
+	for (uint16_t i = 1; i < buffSize; i++) {
+		if (minValue > *(buffPointer+i)) {
+			minValue = *(buffPointer+i);
+		}
+	}
+	return minValue;
+}
+
+// Normaliser array
+void normalizeArray(float *buffPointer, uint16_t buffSize, float minValue, float maxValue){
+	//float maxValue = maxInArray(buffPointer, buffSize);
+	//float minValue = minInArray(buffPointer, buffSize);
+	for(int i=0; i<buffSize; i++) {
+		*(buffPointer+i) = (*(buffPointer+i) - minValue) / (maxValue - minValue);
+	}
+}

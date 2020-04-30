@@ -40,7 +40,7 @@ dataToPlot = int16(simulatedData(plotIndexes(1):plotIndexes(2),2:7));
 
 %% Start COM port og skriv data til port
 % Port til ESP32
-comport = '/dev/ttyUSB0';
+comport = '/dev/ttyUSB2';
 % Start seriel port instance
 serial_port = serial(comport, 'TimeOut', 10, 'BaudRate', 115200, 'InputBufferSize', 4096);
 
@@ -58,21 +58,16 @@ end
 
 dataIndex = 1;
 if port_open
-   while dataIndex < dataLen
-       fwrite(serial_port, dataToPlot(dataIndex,1), 'int16');
-       %pause(1)
-       fwrite(serial_port, dataToPlot(dataIndex,2), 'int16');
-       %pause(1)
-       fwrite(serial_port, dataToPlot(dataIndex,3), 'int16');
-       %pause(1)
-       fwrite(serial_port, dataToPlot(dataIndex,4), 'int16');
-       %pause(1)
-       fwrite(serial_port, dataToPlot(dataIndex,5), 'int16');
-       %pause(1)
-       fwrite(serial_port, dataToPlot(dataIndex,6), 'int16');       
+   while dataIndex < dataLen - 2
+       fwrite(serial_port, dataToPlot(dataIndex,1), 'int16');   
+       fwrite(serial_port, dataToPlot(dataIndex,2), 'int16');  
+       fwrite(serial_port, dataToPlot(dataIndex,3), 'int16');  
+       fwrite(serial_port, dataToPlot(dataIndex,4), 'int16');  
+       fwrite(serial_port, dataToPlot(dataIndex,5), 'int16');  
+       fwrite(serial_port, dataToPlot(dataIndex,6), 'int16');         
        %pause(1)
        dataIndex = dataIndex + 1;
        pause(0.01)
    end
 end
-%fclose(serial_port);
+fclose(serial_port);
