@@ -52,8 +52,12 @@ catch err
     port_open = 0;
 end
 
-figure
+allPlot = figure();
 plot(dataToPlot)
+
+cutPlot = figure();
+bufferSize = 512;
+
 
 dataIndex = 1;
 if port_open
