@@ -175,7 +175,7 @@ uint8_t findPeaksInArray(double *arrayPointer, uint16_t arrayLength, double thre
 			// Tjek om over threshold
 			if (*(arrayPointer+i) > threshold) {
 				// Tjek om værdi er mindre før og efter
-				if ((*(arrayPointer+i)) > (*(arrayPointer+i+1)) && (*(arrayPointer+i)) > (*(arrayPointer+i-1))) {
+				if ((*(arrayPointer+i)) >= (*(arrayPointer+i+1)) && (*(arrayPointer+i)) > (*(arrayPointer+i-1))) {
 					// Optæl antal peaks
 					peakCount++;
 				}
