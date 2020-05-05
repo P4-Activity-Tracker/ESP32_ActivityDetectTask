@@ -42,7 +42,7 @@
 // Debug funktionalitet
 #define useDebug // Udkommenter dette for at slå alt debug fra
 #ifdef useDebug
-	#include "debuggerAndTester.h"
+	//#include "debuggerAndTester.h"
 #endif
 
 //----------------------------------------------
@@ -328,6 +328,12 @@ void setup() {
 	// Start serial kommunikation
 	#ifdef useDebug
 		Serial.begin(115200);
+		esp_log_level_set("*", ESP_LOG_VERBOSE);
+		log_v("Verbose");
+		log_d("Debug");
+		log_i("Info");
+		log_w("Warning"); 
+		log_e("Error");
 		// Data loader debug
 		#ifdef useDataSerial
 			DataSerial.begin(115200, SERIAL_8N1, s1RXpin, s1TXpin);
@@ -340,6 +346,7 @@ void setup() {
 	startSampleFuncPointer = startSampleTask;
 	stopSampleFuncPointer = stopSampleTask;
 	// Prøv at forbid til BlE server
+	BLEDevice::init("");
 	while (!connectToServer()) {
 		delay(5000);
 	}  
@@ -448,6 +455,9 @@ void sampleActivityDataTask(void *pvParamaters) {
 		Serial.println(acclRollingData[dataIndex]);
 		Serial.println(gyroRollingData[dataIndex]);
 		
+		writeToServer("You gay, bro");
+
+
 		vTaskSuspend(NULL);
 
 		// Tjek om ny min eller max
