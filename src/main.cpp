@@ -46,14 +46,14 @@
 #endif
 
 //----------------------------------------------
-// Bibliotek inklusioner
+// Bibliotek inklusioner til MPU6050
 #include <Arduino.h>
 #include "FreeRTOS.h"
 #include "Wire.h"
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "arduinoFFT.h"
-
+#include "BLE.h"
 //----------------------------------------------
 // Variable definationer
 // Aktivitets typer (som numbereret liste via enum)
@@ -95,6 +95,15 @@ arduinoFFT FFT = arduinoFFT(); // FFT klasse
 
 //----------------------------------------------
 // Funktionsdefinationer
+
+void startSampleTask () {
+	vTaskResume (sadTaskHandler);
+}
+
+void stopSampleTask () {
+	vTaskSuspend (sadTaskHandler);
+}
+
 // Finder absolutte værdi af komplex nummer gem i real array og imaginær array, gem i real
 void absComplexArray(double *realPointer, double *imagPointer, uint16_t arrayLength) {
 	for (int i=0; i < arrayLength; i++) {
@@ -327,9 +336,13 @@ void setup() {
 	#endif
 	// Setup IMU
 	setupIMU();
-
-	//  INDSÆT BLUETOOTH
-
+	// Funktioner pointers
+	startSampleFuncPointer = startSampleTask;
+	stopSampleFuncPointer = stopSampleTask;
+	// Prøv at forbid til BlE server
+	while (!connectToServer()) {
+		delay(5000);
+	}  
 	// Lav data behandler task
 	xTaskCreate(
 		sampleActivityDataTask,
@@ -539,6 +552,9 @@ void processActivityDataTask(void *pvParameters) {
 			Serial.println("Data processing done");
 			Serial.println();
 		#endif
+
+		String
+		writeToServer();
 
 		// Klargør task til næste data processering
 		peakCount = 0;
