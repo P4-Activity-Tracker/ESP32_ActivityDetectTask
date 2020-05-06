@@ -1,4 +1,15 @@
 //----------------------------------------------
+// Bibliotek inklusioner til MPU6050
+#include <Arduino.h>
+#include "FreeRTOS.h"
+#include "Wire.h"
+#include "I2Cdev.h"
+#include "MPU6050.h"
+#include "arduinoFFT.h"
+#include "BLE.h"
+#include "arrayProcessing.h"
+
+//----------------------------------------------
 // Compiler definationer
 // FreeRTOS kerne definationer
 #if CONFIG_FREERTOS_UNICORE
@@ -21,9 +32,11 @@
 // Data buffer størrelse (skal kunne divideres med 2 for at FFT bibliotek virker)
 #define bufferSize 512
 // Single sided FFT buffer size
-#define singleSize (bufferSize / 2) + 1
+const uint16_t singleSize = (bufferSize / 2);
 // Frekvens i Hz hvor over og under sammen skal sammenlignes
 #define sumFreq 8
+// FFT index hvoromkring summen af FFT skal beregnes
+const uint16_t fftIndexSummed = (((bufferSize / fs) * sumFreq) + 1);
 // Peak detektion threshold
 #define acclPeakThreshold 0.65
 #define gyroPeakThreshold 0.65 
@@ -42,18 +55,9 @@
 // Debug funktionalitet
 #define useDebug // Udkommenter dette for at slå alt debug fra
 #ifdef useDebug
-	//#include "debuggerAndTester.h"
+	#include "debuggerAndTester.h"
 #endif
 
-//----------------------------------------------
-// Bibliotek inklusioner til MPU6050
-#include <Arduino.h>
-#include "FreeRTOS.h"
-#include "Wire.h"
-#include "I2Cdev.h"
-#include "MPU6050.h"
-#include "arduinoFFT.h"
-#include "BLE.h"
 //----------------------------------------------
 // Variable definationer
 // Aktivitets typer (som numbereret liste via enum)
@@ -87,6 +91,12 @@ double acclStaticData[bufferSize];
 double gyroRollingData[bufferSize];
 // Lav statisk data buffer
 double gyroStaticData[bufferSize];
+// FFT reel og imaginær array
+double realFFT[bufferSize];
+double imagFFT[bufferSize];
+// Accelerometer og gyroskop single FFT array
+double acclSingleFFT[singleSize];
+double gyroSingleFFT[singleSize];
 
 //----------------------------------------------
 // Initializering af klasse instancer
@@ -104,26 +114,6 @@ void stopSampleTask () {
 	vTaskSuspend (sadTaskHandler);
 }
 
-// Finder absolutte værdi af komplex nummer gem i real array og imaginær array, gem i real
-void absComplexArray(double *realPointer, double *imagPointer, uint16_t arrayLength) {
-	for (int i=0; i < arrayLength; i++) {
-		*(realPointer+i) = sqrt(pow(*(realPointer+i),2) + pow(*(imagPointer+i),2));
-	}
-}
-
-// Normaliser array
-void normalizeArray(double *arrayPointer, uint16_t arrayLength, double minValue, double maxValue){
-	#ifdef printFunc_normalizeArray
-		Serial.print("normalizeArray(), Normalizing, with min/max: ");
-		Serial.print(minValue);
-		Serial.print(" ");
-		Serial.println(maxValue);
-	#endif
-	for(int i=0; i < arrayLength; i++) {
-		*(arrayPointer+i) = (*(arrayPointer+i) - minValue) / (maxValue - minValue);
-	}
-}
-
 // Beregn Pythagoras bevægelsesvektor fra x, y og z
 double calculatePythagoras(int16_t x, int16_t y, int16_t z) {
 	double pythagoras = (pow(x,2) + pow(y,2) + pow(z,2));
@@ -131,28 +121,18 @@ double calculatePythagoras(int16_t x, int16_t y, int16_t z) {
 	return pythagoras;
 }
 
-// Kopier int16_t array til double array
-void copyArray(double *fromArray, double *toArray, int16_t arrayLength) {
-	for (uint16_t i = 0; i < arrayLength; i++) {
-		*(toArray+i) = *(fromArray+i);
-	}
-}
-
-// Bereng summen af alle datapunkter i et array fra startIndex til endIndex. endIndex bør ikke overstige størrelsen af arrayet. startindex er inklusiv, endIndex er eksklusiv
-double arraySum(double *arrayPointer, uint16_t startIndex, uint16_t endIndex) {
-	double sumOfArray = 0;
-	for (uint16_t i = startIndex; i < endIndex; i++) {
-		sumOfArray = sumOfArray + *(arrayPointer+i);
-	}
-	#ifdef printFunc_arraySum
-		Serial.print("arraySum(), Finding sum, with start/stop and sum: ");
-		Serial.print(startIndex);
-		Serial.print(" ");
-		Serial.print(endIndex);
-		Serial.print(" ");
-		Serial.println(sumOfArray);
-	#endif
-	return sumOfArray;
+// Udfør FFT på data og kopier absolut single sided FFT til absFFTout array (output array (absFFTout) længde er (arrayLength/2)+1)
+void getAbsoluteSingleFFT(double *rawDataIn, double *absFFTout, uint16_t arrayLength) {
+	// Kopier data til FFT array
+	copyArray(rawDataIn, realFFT, arrayLength); 
+	// Reset alle værdier i imagFFT (nødvendigt ifølge arduinoFFT bibliotek)
+	setArrayTo(imagFFT, arrayLength, 0); 
+	// Udfør FFT
+	FFT.Compute(realFFT, imagFFT, arrayLength, FFT_FORWARD);
+	// Beregn absolute værdi af FFT 
+	absComplexArray(realFFT, imagFFT, arrayLength); 
+	// Kopier data til FFT array
+	copyArray(realFFT, absFFTout, (arrayLength / 2)); 
 }
 
 // Estimer aktivitet baseret på summen af frekvensindhold over og under hzIndex
@@ -174,30 +154,6 @@ uint8_t estimateActivity(double *acclSumBelow, double *acclSumAbove, double *gyr
 	return UNKNOWN;
 }
 
-// Find peaks i array
-uint8_t findPeaksInArray(double *arrayPointer, uint16_t arrayLength, double threshold, uint16_t timeout) {
-	uint8_t peakCount = 0;
-	int32_t lastPeakIndex = -timeout; 
-	for (uint16_t i = 1; i > arrayLength - 1; i++) {
-		// Tjek om timeout er overstået
-		if ((i - lastPeakIndex) > timeout) {
-			// Tjek om over threshold
-			if (*(arrayPointer+i) > threshold) {
-				// Tjek om værdi er mindre før og efter
-				if ((*(arrayPointer+i)) >= (*(arrayPointer+i+1)) && (*(arrayPointer+i)) > (*(arrayPointer+i-1))) {
-					// Optæl antal peaks
-					peakCount++;
-				}
-			}
-		}
-	}
-	#ifdef printFunc_findPeaksInArray
-		Serial.print("findPeaksInArray(), Found peaks: ");
-		Serial.println(peakCount);
-	#endif
-	return peakCount;
-}
-
 // Korriger tidligere estimeret aktivitet
 uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 	#ifdef printFunc_specifyActivity
@@ -205,7 +161,11 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 	#endif
 	switch (activity) {
 		case BIKE: {
-			float spinsPerMin = (peaks / 5) * 60;
+			float spinsPerMin = ((float)peaks / 5.0f) * 60.0f;
+			#ifdef printFunc_specifyActivity
+				Serial.print("Spins per min is: ");
+				Serial.println(spinsPerMin);
+			#endif	
 			if (spinsPerMin > fastBikeSPM) {
 				#ifdef printFunc_specifyActivity
 					Serial.println("FAST BIKE");
@@ -219,7 +179,11 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 			}
 		} break;
 		case RUN_WALK: {
-			float stepsPerMin = ((peaks * 2) / 5) * 60;
+			float stepsPerMin = (((float)peaks * 2.0f) / 5.0f) * 60.0f;
+			#ifdef printFunc_specifyActivity
+				Serial.print("Steps per min is: ");
+				Serial.println(stepsPerMin);
+			#endif	
 			if (stepsPerMin > runSPM) {
 				#ifdef printFunc_specifyActivity
 					Serial.println("RUN");
@@ -236,74 +200,14 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 	return activity;
 }
 
-// Finder maksimal værdi i array
-double maxInArray(double *buffPointer, uint16_t buffSize) {
-	double maxValue = *(buffPointer);
-	#ifdef printFunc_maxInArray
-		uint16_t maxIndex = 0;
-	#endif
-	for (uint16_t i = 1; i < buffSize; i++) {
-		if (maxValue < *(buffPointer+i)) {
-			maxValue = *(buffPointer+i);
-			#ifdef printFunc_maxInArray
-				maxIndex = i;
-			#endif
-		}
-	}
-	#ifdef printFunc_maxInArray
-		Serial.print("maxInArray(), max is: ");
-		Serial.print(maxValue);
-		Serial.print(" at index: ");
-		Serial.println(maxIndex);
-	#endif
-	return maxValue;	
-}
+// funktion som sørger for at konvertere heltal til en string af længden characters. 
+String dataToCharacters (int32_t data ,uint8_t characters){ //input data kan bestå af HR, EE, antal skridt, og characters beskriver antallet af karaktere i output string. 
+	String dataS = String(data);
 
-// Finder minimal værdi i array
-double minInArray(double *buffPointer, uint16_t buffSize) {
-	double minValue = *(buffPointer);
-	#ifdef printFunc_maxInArray
-		uint16_t minIndex = 0;
-	#endif
-	for (uint16_t i = 1; i < buffSize; i++) {
-		if (minValue > *(buffPointer+i)) {
-			minValue = *(buffPointer+i);
-			#ifdef printFunc_maxInArray
-				minIndex = i;
-			#endif
-		}
+	for (uint8_t i = dataS.length(); i < characters ; i++){
+		dataS = "0" + dataS;
 	}
-	#ifdef printFunc_minInArray
-		Serial.print("minInArray(), min is: ");
-		Serial.print(minValue);
-		Serial.print(" at index: ");
-		Serial.println(minIndex);
-	#endif
-	return minValue;
-}
-
-// Sæt alle værdier i array til given værdi
-void setArrayTo(double *arrayPointer, uint16_t arrayLength, double value) {
-	for (uint16_t i = 0; i < arrayLength; i++) {
-		*(arrayPointer+i) = 0;
-	}
-}
-
-// Udfør FFT på data og kopier absolut single sided FFT til absFFTout array (output array (absFFTout) længde er (arrayLength/2)+1)
-void getAbsoluteSingleFFT(double *rawDataIn, double *absFFTout, uint16_t arrayLength) {
-	// FFT reel og imaginær array
-	double realFFT[arrayLength];
-	double imagFFT[arrayLength];
-	// Kopier data til FFT array
-	copyArray(rawDataIn, realFFT, arrayLength); 
-	// Reset alle værdier i imagFFT (nødvendigt ifølge arduinoFFT bibliotek)
-	setArrayTo(imagFFT, arrayLength, 0); 
-	// Udfør FFT
-	FFT.Compute(realFFT, imagFFT, arrayLength, FFT_FORWARD);
-	// Beregn absolute værdi af FFT 
-	absComplexArray(realFFT, imagFFT, arrayLength); 
-	// Kopier data til FFT array
-	copyArray(&realFFT[1], absFFTout, (arrayLength / 2) + 1); 
+	return dataS;
 }
 
 // Initialiser IMU, set samplerate og akserange
@@ -322,54 +226,27 @@ void setupIMU() {
 	imu.setFullScaleGyroRange(2);
 }
 
-// String dataToCharacters (int32_t peakCount){
-// 	String peakCountS = String (peakCount);
-// 	if (peakCountS.length() == 0){
-// 		peakCountS = "00";
-// 	} else if (peakCountS.length() == 1){
-// 		peakCountS = "0" + peakCountS;
-// 	} 
-// 	return peakCountS;
-
-// }
-// funktion som sørger for at konvertere heltal til en string af længden characters. 
-String dataToCharacters (int32_t data ,uint8_t characters){ //input data kan bestå af HR, EE, antal skridt, og characters beskriver antallet af karaktere i output string. 
-	String dataS = String(data);
-
-	for (uint8_t i = dataS.length(); i < characters ; i++){
-		dataS = "0" + dataS;
-	}
-	return dataS;
-}
-
 //----------------------------------------------
 // Setup
+//----------------------------------------------
 void setup() {
 	// Start serial kommunikation
 	#ifdef useDebug
 		Serial.begin(115200);
-		esp_log_level_set("*", ESP_LOG_VERBOSE);
-		log_v("Verbose");
-		log_d("Debug");
-		log_i("Info");
-		log_w("Warning"); 
-		log_e("Error");
-		// Data loader debug
-		#ifdef useDataSerial
-			DataSerial.begin(115200, SERIAL_8N1, s1RXpin, s1TXpin);
-			DataSerial.setRxBufferSize(serialBufferSize);
-		#endif
 	#endif
-	// Setup IMU
-	setupIMU();
-	// Funktioner pointers
-	startSampleFuncPointer = startSampleTask;
-	stopSampleFuncPointer = stopSampleTask;
-	// Prøv at forbid til BlE server
-	BLEDevice::init("");
-	while (!connectToServer()) {
-		delay(5000);
-	}  
+	#ifndef useArrayData
+		// Setup IMU
+		setupIMU();
+		// Funktioner pointers
+		startSampleFuncPointer = startSampleTask;
+		stopSampleFuncPointer = stopSampleTask;
+		// Prøv at forbid til BlE server
+		BLEDevice::init("");
+		// Vent på BLE forbindelse
+		while (!connectToServer()) {
+			delay(5000);
+		}  
+	#endif
 	// Lav data behandler task
 	xTaskCreate(
 		sampleActivityDataTask,
@@ -390,35 +267,22 @@ void setup() {
 	);
 	// Lad begge tasks blive færdig med setup
 	delay(2);
-
-	vTaskResume(sadTaskHandler);
-
-	// bool waitingForStartByte = true;
-	// while(waitingForStartByte) {
-	// 	if (waitingForStartByte) {
-	// 		if (DataSerial.available() > 0) {
-	// 			int8_t input = DataSerial.read();
-	// 			Serial.write(input);
-	// 			if (input == 101) {
-	// 				waitingForStartByte = false;
-	// 				Serial.println("Starting!");
-	// 				vTaskResume(sadTaskHandler);
-	// 			}
-	// 		}
-	// 	}
-	// }
+	#ifdef useArrayData
+		vTaskResume(sadTaskHandler); // Start data sampling (til debug)
+	#endif
 }
 
 //----------------------------------------------
 // Main loop
+//----------------------------------------------
 void loop() {
 
-		// Indsæt bluetooth kode til læsning
+	// Indsæt bluetooth kode til læsning
 
-		// TaskStatus_t sampleTaskStatus = eTaskGetState(sadTaskHandler);
-		// if (sampleTaskStatus == eSuspended) {
-		// 	vTaskResume(sadTaskHandler);
-		// }
+	// TaskStatus_t sampleTaskStatus = eTaskGetState(sadTaskHandler);
+	// if (sampleTaskStatus == eSuspended) {
+	// 	vTaskResume(sadTaskHandler);
+	
 }
 
 /*--------------------------------------------------*/
@@ -441,80 +305,33 @@ void sampleActivityDataTask(void *pvParamaters) {
 	TickType_t lastWakeTime = xTaskGetTickCount();
 	// Task loop
 	for (;;) {
-		#if defined(useDataSerial)
-			// Simuler sampling af data via Serial
-			getAcclDataFromSerialM6(&ax, &ay, &az, &gx, &gy, &gz);
-			#ifdef printSerialData
-				doPrintSerialData(&ax, &ay, &az, &gx, &gy, &gz, dataIndex);
-			#endif
-		#elif defined(useArrayData)
-			if(!getArrayDataM6(&ax, &ay, &az, &gx, &gy, &gz)) {
+		#if defined(useArrayData)
+			// Brug data fil
+			if(!getDataArrayM6(&ax, &ay, &az, &gx, &gy, &gz)) {
 				vTaskSuspend(NULL);
 			}
 		#else
 			// Sampler data via IMU
 			imu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 		#endif
-
-		Serial.print(ax);
-		Serial.print(" ");
-		Serial.print(ay);
-		Serial.print(" ");
-		Serial.print(az);
-		Serial.print(" ");
-		Serial.print(gx);
-		Serial.print(" ");
-		Serial.print(gy);
-		Serial.print(" ");
-		Serial.println(gz);								
-
 		// Beregn produktet af det samplede værdier
 		acclRollingData[dataIndex] = calculatePythagoras(ax, ay, az);
 		gyroRollingData[dataIndex] = calculatePythagoras(gx, gy, gz);
-		
-		Serial.println(acclRollingData[dataIndex]);
-		Serial.println(gyroRollingData[dataIndex]);
-		
-		writeToServer("You gay, bro");
-
-
-		vTaskSuspend(NULL);
-
-		// Tjek om ny min eller max
-		// isNewMin(acclRollingData[dataIndex], gyroRollingData[dataIndex]);
-		// isNewMax(acclRollingData[dataIndex], gyroRollingData[dataIndex]);
 		// Tjek om det er tid til at lave databehandling
-		if (dataIndex >= bufferSize - 1) {
+		if (dataIndex >= (bufferSize - 1)) {
 			// Sæt data index tilbage til 0
 			dataIndex = 0;
-			// Kopier min og max
-			// copyArray(acclRollingMinMax, acclStaticMinMax, 2);
-			// copyArray(gyroRollingMinMax, gyroStaticMinMax, 2);
-			// Sæt min og max tilbage til nul
-			// resetMinMax();
 			// Kopier alt data fra rolling buffer til static buffer
 			copyArray(acclRollingData, acclStaticData, bufferSize);
 			copyArray(gyroRollingData, gyroStaticData, bufferSize);
-			
-			// isIdentical(acclRollingData, acclStaticData, bufferSize);
-			// isIdentical(gyroRollingData, gyroStaticData, bufferSize);
-						
-			
 			// Genstart data processing task
 			vTaskResume(padTaskHandler);
-			#ifdef useDataSerial
-				vTaskSuspend(NULL);
-			#endif
 		} else {
 			// Opsæt data index
 			dataIndex++;
 		}
-		#ifdef useDataSerial
-			vTaskDelay(50);
-		#else
-			// Vent indtil der skal samples igen
-			vTaskDelayUntil(&lastWakeTime, frequency);
-		#endif
+		// Vent indtil der skal samples igen
+		vTaskDelayUntil(&lastWakeTime, frequency);
 	}
 }
 
@@ -526,14 +343,6 @@ void processActivityDataTask(void *pvParameters) {
 	uint8_t peakCount = 0;
 	// Forbered aktivitets indikator
 	uint8_t activity = 0;
-	// FFT data array
-	double acclSingleFFT[singleSize];
-	double gyroSingleFFT[singleSize];
-	// Min og max variabler
-	double dataMax;
-	double dataMin;
-	// FFT index hvoromkring summen af FFT skal beregnes
-	uint16_t fftIndexSummed = ((bufferSize / fs) * sumFreq);
 	// Sæt task på pause indtil den skal bruges
 	vTaskSuspend(NULL);
 	// Task loop
@@ -541,24 +350,25 @@ void processActivityDataTask(void *pvParameters) {
 		#ifdef useDebug
 			Serial.println("Running data processing");
 		#endif
-		// Find min og max i accelerometerdata
-		dataMax = maxInArray(acclStaticData, bufferSize);
-		dataMin = minInArray(acclStaticData, bufferSize);
+		// Find max i accelerometerdata
+		double dataMax = maxInArray(acclStaticData, bufferSize);
 		// Normaliser accelerometerdata
-		normalizeArray(acclStaticData, bufferSize, dataMin, dataMax);
-		// Find min og max i gyroskop data
+		normalizeArray(acclStaticData, bufferSize, dataMax);
+		// Find max i gyroskop data
 		dataMax = maxInArray(gyroStaticData, bufferSize);
-		dataMin = minInArray(gyroStaticData, bufferSize);
 		// Normaliser gyroskopdata
-		normalizeArray(gyroStaticData, bufferSize, dataMin, dataMax);
+		normalizeArray(gyroStaticData, bufferSize, dataMax);
 		// Beregn FFT af data
 		getAbsoluteSingleFFT(acclStaticData, acclSingleFFT, bufferSize);
 		getAbsoluteSingleFFT(gyroStaticData, gyroSingleFFT, bufferSize);
+		// Fjern DC fra FFT
+		setArrayTo(acclSingleFFT, 5, 0); 
+		setArrayTo(gyroSingleFFT, 5, 0); 
 		// Find sum under hzIndex og over hzIndex
-		double acclBelowSum = arraySum(acclSingleFFT, 4, fftIndexSummed + 1);
-		double acclAboveSum = arraySum(acclSingleFFT, fftIndexSummed + 2, singleSize);
-		double gyroBelowSum = arraySum(gyroSingleFFT, 4, fftIndexSummed + 1);
-		double gyroAboveSum = arraySum(gyroSingleFFT, fftIndexSummed + 2, singleSize);
+		double acclBelowSum = arraySum(acclSingleFFT, 0, fftIndexSummed);
+		double acclAboveSum = arraySum(acclSingleFFT, fftIndexSummed, singleSize);
+		double gyroBelowSum = arraySum(gyroSingleFFT, 0, fftIndexSummed);
+		double gyroAboveSum = arraySum(gyroSingleFFT, fftIndexSummed, singleSize);
 		// Gæt aktivitet baseret på FFT
 		activity = estimateActivity(&acclBelowSum, &acclAboveSum, &gyroBelowSum, &gyroAboveSum);
 		// Find peaks i data
@@ -572,20 +382,15 @@ void processActivityDataTask(void *pvParameters) {
 		}
 		// Korriger aktivitet
 		activity = specifyActivity(activity, peakCount);
-
-		#ifdef useDebug
-			Serial.print("Activity is: ");
-			Serial.println(activity);
+		#ifndef useArrayData
+			// Her benyttes fuktionen "dataToCharacters" til activity og peakcount, hvor det gemmes i "dataOut" som derefter skrives til med funktionen "writeToServer"
+			String dataOut = dataToCharacters(activity,1) + dataToCharacters(peakCount,2);
+			writeToServer(dataOut);
 		#endif
-
 		#ifdef useDebug
 			Serial.println("Data processing done");
 			Serial.println();
 		#endif
-		// Her benyttes fuktionen "dataToCharacters" til activity og peakcount, hvor det gemmes i "dataOut" som derefter skrives til med funktionen "writeToServer"
-		String dataOut = dataToCharacters(activity,1) + dataToCharacters(peakCount,2);
-		writeToServer(dataOut);
-
 		// Klargør task til næste data processering
 		peakCount = 0;
 		activity = 0;

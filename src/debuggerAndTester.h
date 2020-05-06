@@ -3,7 +3,8 @@
 
 #include "Arduino.h"
 
-#define printFunc // Print funktions resultater
+// Debug funktionalitet
+#define printFunc // Udkommenter denne for at stoppe funktions print.
 #ifdef printFunc
 	#define printFunc_normalizeArray
 	#define printFunc_arraySum
@@ -14,24 +15,16 @@
 	#define printFunc_minInArray
 #endif
 
-void isIdentical(double *arrayOne, double *arrayTwo, uint16_t arraySize) {
-	for (uint16_t i = 0; i < arraySize; i++) {
-		if (*(arrayOne+i) != *(arrayTwo+i)) {
-			Serial.println("Not identical!");
-		}
-	}
-}
-
-#define useArrayData
+//#define useArrayData
 #ifdef useArrayData
-	// #include "jacob_bike150_knee.h"
-	#include "jacob_run_knee.h"
+	#include "jacob_bike150_knee.h"
+	// #include "jacob_run_knee.h"
 
 	#define arrayDataSize 30006
 
 	uint16_t testDataIndex = 0;
 
-	bool getArrayDataM6(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz) {
+	bool getDataArrayM6(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz) {
 		*ax = testData[testDataIndex];
 		*ay = testData[testDataIndex + 1];
 		*az = testData[testDataIndex + 2];

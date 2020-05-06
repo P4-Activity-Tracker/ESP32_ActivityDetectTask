@@ -57,6 +57,7 @@ class MyClientCallback : public BLEClientCallbacks {
 
 	void onDisconnect(BLEClient* pclient) {
 		connected = false;
+		stopSampleFuncPointer(); // Stop sampling ved disconnect
 		Serial.println("onDisconnect");
 	}
 };
