@@ -322,6 +322,26 @@ void setupIMU() {
 	imu.setFullScaleGyroRange(2);
 }
 
+// String dataToCharacters (int32_t peakCount){
+// 	String peakCountS = String (peakCount);
+// 	if (peakCountS.length() == 0){
+// 		peakCountS = "00";
+// 	} else if (peakCountS.length() == 1){
+// 		peakCountS = "0" + peakCountS;
+// 	} 
+// 	return peakCountS;
+
+// }
+// funktion som sørger for at konvertere heltal til en string af længden characters. 
+String dataToCharacters (int32_t data ,uint8_t characters){ //input data kan bestå af HR, EE, antal skridt, og characters beskriver antallet af karaktere i output string. 
+	String dataS = String(data);
+
+	for (uint8_t i = dataS.length(); i < characters ; i++){
+		dataS = "0" + dataS;
+	}
+	return dataS;
+}
+
 //----------------------------------------------
 // Setup
 void setup() {
@@ -562,9 +582,9 @@ void processActivityDataTask(void *pvParameters) {
 			Serial.println("Data processing done");
 			Serial.println();
 		#endif
-
-		String
-		writeToServer();
+		// Her benyttes fuktionen "dataToCharacters" til activity og peakcount, hvor det gemmes i "dataOut" som derefter skrives til med funktionen "writeToServer"
+		String dataOut = dataToCharacters(activity,1) + dataToCharacters(peakCount,2);
+		writeToServer(dataOut);
 
 		// Klargør task til næste data processering
 		peakCount = 0;
