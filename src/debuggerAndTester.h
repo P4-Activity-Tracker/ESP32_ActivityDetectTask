@@ -2,6 +2,7 @@
 #define _debuggerAndTester_
 
 #include "Arduino.h"
+#include "arrayProcessing.h"
 
 // Debug funktionalitet
 #define printFunc // Udkommenter denne for at stoppe funktions print.
@@ -15,25 +16,45 @@
 	#define printFunc_minInArray
 #endif
 
+#define testRunTime
+#ifdef testRunTime
+	uint32_t sampleStart, sampleStop, procStart, procStop = 0;
+	uint16_t sampleIndex = 0;
+	uint32_t sampleAll[bufferSize];
+
+	bool runningTest = false;
+
+	void printSampleTime() {
+		uint64_t allSampleTime = arraySum(sampleAll, 0, bufferSize);
+		uint32_t maxSampleTime = maxInArray(sampleAll, bufferSize);
+		Serial.print("Acerage sample time in microseconds:");
+		Serial.println((uint32_t)allSampleTime/bufferSize);
+		Serial.print("Max sample time in microseconds: ");
+		Serial.println(maxSampleTime);
+	}
+
+	void printElapsedTime(uint32_t startTime, uint32_t stopTime) {
+		Serial.print("Elapsed time in microseconds: ");
+		Serial.println(stopTime - startTime);
+	}
+#endif
+
 //#define useArrayData
 #ifdef useArrayData
-	#include "jacob_bike150_knee.h"
-	// #include "jacob_run_knee.h"
+	//#include "jacob_run_knee_omgang1_40sec.h"
+	#include "jacob_bike150_knee_omgang1_40sec.h"
 
-	#define arrayDataSize 30006
-
-	uint16_t testDataIndex = 0;
-
+	#define arrayDataSize 24000 // Længde af 40 sec rå accl- og gyrodata array
+	uint16_t testDataIndex = 0; // Index tæller for rå data array
 	bool getDataArrayM6(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz) {
-		*ax = testData[testDataIndex];
-		*ay = testData[testDataIndex + 1];
-		*az = testData[testDataIndex + 2];
-		*gx = testData[testDataIndex + 3];
-		*gy = testData[testDataIndex + 4];
-		*gz = testData[testDataIndex + 5];
-
-		testDataIndex = testDataIndex + 6;
-		if (testDataIndex > arrayDataSize) {
+		*ax = testData[testDataIndex]; // Accl x-akse
+		*ay = testData[testDataIndex + 1]; // Accl y-akse
+		*az = testData[testDataIndex + 2]; // Accl z-akse
+		*gx = testData[testDataIndex + 3]; // Gyro x-akse
+		*gy = testData[testDataIndex + 4]; // Gyro y-akse
+		*gz = testData[testDataIndex + 5]; // Gyro z-akse
+		testDataIndex = testDataIndex + 6; // Optæl tæller, til næste sæt af accl og gyro data
+		if (testDataIndex > arrayDataSize) { // Stop data sampling hvis ende af array er nået
 			return false;
 		}
 		return true;

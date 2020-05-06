@@ -44,6 +44,34 @@ double maxInArray(double *buffPointer, uint16_t buffSize) {
 	return maxValue;	
 }
 
+// Finder maksimal værdi i array
+uint32_t maxInArray(uint32_t *buffPointer, uint16_t buffSize) {
+	double maxValue = *(buffPointer);
+	#ifdef printFunc_maxInArray
+		Serial.print("Finding max. Start value: ");
+		Serial.println(maxValue);
+		uint16_t maxIndex = 0;
+	#endif
+	for (uint16_t i = 1; i < buffSize; i++) {
+		if (maxValue < *(buffPointer+i)) {
+			#ifdef printFunc_maxInArray
+				Serial.print(maxValue);
+				Serial.print(" > ");
+				Serial.println(*(buffPointer+i));
+				maxIndex = i;
+			#endif
+			maxValue = *(buffPointer+i);
+		}
+	}
+	#ifdef printFunc_maxInArray
+		Serial.print("maxInArray(), max is: ");
+		Serial.print(maxValue);
+		Serial.print(" at index: ");
+		Serial.println(maxIndex);
+	#endif
+	return maxValue;	
+}
+
 // Finder minimal værdi i array
 double minInArray(double *buffPointer, uint16_t buffSize) {
 	double minValue = *(buffPointer);
@@ -99,6 +127,22 @@ void normalizeArray(double *arrayPointer, uint16_t arrayLength, double minValue,
 // Bereng summen af alle datapunkter i et array fra startIndex til endIndex. endIndex bør ikke overstige størrelsen af arrayet. startindex er inklusiv, endIndex er eksklusiv
 double arraySum(double *arrayPointer, uint16_t startIndex, uint16_t endIndex) {
 	double sumOfArray = 0;
+	for (uint16_t i = startIndex; i < endIndex; i++) {
+		sumOfArray = sumOfArray + *(arrayPointer+i);
+	}
+	#ifdef printFunc_arraySum
+		Serial.print("arraySum(), Finding sum, with start/stop and sum: ");
+		Serial.print(startIndex);
+		Serial.print(" ");
+		Serial.print(endIndex);
+		Serial.print(" ");
+		Serial.println(sumOfArray);
+	#endif
+	return sumOfArray;
+}
+
+uint64_t arraySum(uint32_t *arrayPointer, uint16_t startIndex, uint16_t endIndex) {
+	uint64_t sumOfArray = 0;
 	for (uint16_t i = startIndex; i < endIndex; i++) {
 		sumOfArray = sumOfArray + *(arrayPointer+i);
 	}

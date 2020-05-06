@@ -50,7 +50,7 @@ const uint16_t fftIndexSummed = (((bufferSize / fs) * sumFreq) + 1);
 
 // Pins to I2C kommunikation
 #define SDA_pin 21
-#define SCL_pin 20
+#define SCL_pin 22
 
 // Debug funktionalitet
 #define useDebug // Udkommenter dette for at slå alt debug fra
@@ -91,12 +91,6 @@ double acclStaticData[bufferSize];
 double gyroRollingData[bufferSize];
 // Lav statisk data buffer
 double gyroStaticData[bufferSize];
-// FFT reel og imaginær array
-double realFFT[bufferSize];
-double imagFFT[bufferSize];
-// Accelerometer og gyroskop single FFT array
-double acclSingleFFT[singleSize];
-double gyroSingleFFT[singleSize];
 
 //----------------------------------------------
 // Initializering af klasse instancer
@@ -107,11 +101,23 @@ arduinoFFT FFT = arduinoFFT(); // FFT klasse
 // Funktionsdefinationer
 
 void startSampleTask () {
-	vTaskResume (sadTaskHandler);
+	#ifdef testRunTime
+		if (!runningTest) {
+	#endif
+	vTaskResume(sadTaskHandler);
+	#ifdef testRunTime
+		}
+	#endif
 }
 
 void stopSampleTask () {
-	vTaskSuspend (sadTaskHandler);
+	#ifdef testRunTime
+		if (!runningTest) {
+	#endif
+	vTaskSuspend(sadTaskHandler);
+	#ifdef testRunTime
+		}
+	#endif
 }
 
 // Beregn Pythagoras bevægelsesvektor fra x, y og z
@@ -123,6 +129,9 @@ double calculatePythagoras(int16_t x, int16_t y, int16_t z) {
 
 // Udfør FFT på data og kopier absolut single sided FFT til absFFTout array (output array (absFFTout) længde er (arrayLength/2)+1)
 void getAbsoluteSingleFFT(double *rawDataIn, double *absFFTout, uint16_t arrayLength) {
+	// FFT reel og imaginær array
+	double realFFT[bufferSize];
+	double imagFFT[bufferSize];
 	// Kopier data til FFT array
 	copyArray(rawDataIn, realFFT, arrayLength); 
 	// Reset alle værdier i imagFFT (nødvendigt ifølge arduinoFFT bibliotek)
@@ -157,14 +166,17 @@ uint8_t estimateActivity(double *acclSumBelow, double *acclSumAbove, double *gyr
 // Korriger tidligere estimeret aktivitet
 uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 	#ifdef printFunc_specifyActivity
-		Serial.print("specifyActivity(), Specified activity is: ");
+		Serial.print("specifyActivity(), ");
+		Serial.print(" new steps/spins: ");
+		Serial.println(peaks);
 	#endif
 	switch (activity) {
 		case BIKE: {
 			float spinsPerMin = ((float)peaks / 5.0f) * 60.0f;
 			#ifdef printFunc_specifyActivity
-				Serial.print("Spins per min is: ");
-				Serial.println(spinsPerMin);
+				Serial.print("specifyActivity(), Spins per min is: ");
+				Serial.print(spinsPerMin);
+				Serial.print(" , percise activity is: ");
 			#endif	
 			if (spinsPerMin > fastBikeSPM) {
 				#ifdef printFunc_specifyActivity
@@ -181,8 +193,9 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 		case RUN_WALK: {
 			float stepsPerMin = (((float)peaks * 2.0f) / 5.0f) * 60.0f;
 			#ifdef printFunc_specifyActivity
-				Serial.print("Steps per min is: ");
-				Serial.println(stepsPerMin);
+				Serial.print("specifyActivity(), Steps per min is: ");
+				Serial.print(stepsPerMin);
+				Serial.print(" , specified activity is: ");
 			#endif	
 			if (stepsPerMin > runSPM) {
 				#ifdef printFunc_specifyActivity
@@ -195,6 +208,14 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 				#endif				
 				activity = WALK;
 			}
+		} break;
+		default: {
+			#ifdef printFunc_specifyActivity
+				Serial.print("Steps per min is: ");
+				Serial.print(0);
+				Serial.print(" , specified activity is: ");
+				Serial.println("UNKNOWN");
+			#endif	
 		} break;
 	}
 	return activity;
@@ -250,9 +271,9 @@ void setup() {
 	xTaskCreate(
 		sampleActivityDataTask,
 		"Sample activity data",
-		2048, // Hukommelses mængde
+		4096, // Hukommelses mængde
 		NULL,
-		2, // Priotitet
+		19, // Priotitet
 		&sadTaskHandler // Håndtag til task
 	);
 	// Lav data behandler task
@@ -261,7 +282,7 @@ void setup() {
 		"Activity data handler",
 		16384,
 		NULL,
-		1, // Priotitet
+		5, // Priotitet
 		&padTaskHandler // Håndtag til task
 	);
 	// Lad begge tasks blive færdig med setup
@@ -275,13 +296,10 @@ void setup() {
 // Main loop
 //----------------------------------------------
 void loop() {
-
-	// Indsæt bluetooth kode til læsning
-
-	// TaskStatus_t sampleTaskStatus = eTaskGetState(sadTaskHandler);
-	// if (sampleTaskStatus == eSuspended) {
-	// 	vTaskResume(sadTaskHandler);
-	
+	delay(5000);
+	if (!connected) { // Prøv at forbinde til server, hvis ikke forbundet
+		connectToServer();
+	}
 }
 
 /*--------------------------------------------------*/
@@ -304,6 +322,10 @@ void sampleActivityDataTask(void *pvParamaters) {
 	TickType_t lastWakeTime = xTaskGetTickCount();
 	// Task loop
 	for (;;) {
+		#ifdef testRunTime
+			runningTest = true;
+			sampleStart = micros();
+		#endif
 		#if defined(useArrayData)
 			// Brug data fil
 			if(!getDataArrayM6(&ax, &ay, &az, &gx, &gy, &gz)) {
@@ -325,10 +347,19 @@ void sampleActivityDataTask(void *pvParamaters) {
 			copyArray(gyroRollingData, gyroStaticData, bufferSize);
 			// Genstart data processing task
 			vTaskResume(padTaskHandler);
+			#ifdef testRunTime
+				// Stop samplings task hvis der testes eksekveringstid
+				vTaskSuspend(NULL);
+			#endif
 		} else {
 			// Opsæt data index
 			dataIndex++;
 		}
+		#ifdef testRunTime
+			sampleStop = micros();
+			sampleAll[sampleIndex] = sampleStop - sampleStart;
+			sampleIndex = sampleIndex + 1;
+		#endif
 		// Vent indtil der skal samples igen
 		vTaskDelayUntil(&lastWakeTime, frequency);
 	}
@@ -342,12 +373,18 @@ void processActivityDataTask(void *pvParameters) {
 	uint8_t peakCount = 0;
 	// Forbered aktivitets indikator
 	uint8_t activity = 0;
+	// Accelerometer og gyroskop single FFT array
+	double acclSingleFFT[singleSize];
+	double gyroSingleFFT[singleSize];
 	// Sæt task på pause indtil den skal bruges
 	vTaskSuspend(NULL);
 	// Task loop
 	for (;;) {
+		#ifdef testRunTime
+			procStart = micros();
+		#endif
 		#ifdef useDebug
-			Serial.println("Running data processing");
+			//Serial.println("Running data processing");
 		#endif
 		// Find max i accelerometerdata
 		double dataMax = maxInArray(acclStaticData, bufferSize);
@@ -387,12 +424,18 @@ void processActivityDataTask(void *pvParameters) {
 			writeToServer(dataOut);
 		#endif
 		#ifdef useDebug
-			Serial.println("Data processing done");
-			Serial.println();
+			//Serial.println("Data processing done");
+			//Serial.println();
 		#endif
 		// Klargør task til næste data processering
 		peakCount = 0;
 		activity = 0;
+		#ifdef testRunTime
+			procStop = micros();
+			printSampleTime();
+			Serial.println("Processing task time:");
+			printElapsedTime(procStart, procStop);
+		#endif
 		//Suspend task indtil der er ny data klar
 		vTaskSuspend(NULL);
 	}
