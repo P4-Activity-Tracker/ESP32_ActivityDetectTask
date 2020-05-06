@@ -47,7 +47,7 @@ class MyClientCallback : public BLEClientCallbacks {
 	}
 };
 
-// Callback funktion
+// Callback funktion, når det modtages beskeder fra characteristics
 static void notifyCallback(
   BLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
@@ -63,9 +63,9 @@ static void notifyCallback(
 	for (uint8_t i = 0; i < length; i++) {
 		incommingBLE = incommingBLE + *((char*)pData + i); 
 	}
-	if (incommingBLE.indexOf ("startSampling") >= 0) {
+	if (incommingBLE.indexOf ("start") >= 0) { // Finder index til "start" i besked, -1 hvis ikke fundet
 		startSampleFuncPointer();
-	}else if (incommingBLE.indexOf ("stopSampling") >= 0){
+	}else if (incommingBLE.indexOf ("stop") >= 0){
 		stopSampleFuncPointer ();
 	}
 	Serial.println(incommingBLE);
@@ -79,7 +79,8 @@ bool connectToServer() {
     Serial.println(" - Created client");
     pClient->setClientCallbacks(new MyClientCallback());
     // former en trådløs BLE forbindelse til server.
-    if (!pClient->connect(masterAddress)) {;  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
+	bool didConnect = pClient->connect(masterAddress);
+    if (!didConnect) {;  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
 		Serial.println("Couldn't connect to server!");
 		return false;
 	}

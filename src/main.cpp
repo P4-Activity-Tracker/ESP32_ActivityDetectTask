@@ -202,12 +202,11 @@ uint8_t specifyActivity(uint8_t activity, int16_t peaks) {
 
 // funktion som sørger for at konvertere heltal til en string af længden characters. 
 String dataToCharacters (int32_t data ,uint8_t characters){ //input data kan bestå af HR, EE, antal skridt, og characters beskriver antallet af karaktere i output string. 
-	String dataS = String(data);
-
-	for (uint8_t i = dataS.length(); i < characters ; i++){
-		dataS = "0" + dataS;
+	String dataS = String(data); // Ex: 12 skridt -> "12"
+	for (uint8_t i = dataS.length(); i < characters ; i++){ // Ex: længde 2, ønskede karaktere 5, mangele 3 nuller
+		dataS = "0" + dataS; // Tilfæl nul foran de andre karaktere
 	}
-	return dataS;
+	return dataS; // Ex: "00012"
 }
 
 // Initialiser IMU, set samplerate og akserange
@@ -352,12 +351,12 @@ void processActivityDataTask(void *pvParameters) {
 		#endif
 		// Find max i accelerometerdata
 		double dataMax = maxInArray(acclStaticData, bufferSize);
-		// Normaliser accelerometerdata
-		normalizeArray(acclStaticData, bufferSize, dataMax);
+		// Find threshold for accelerometerdata
+		double acclThreshold = dataMax * acclPeakThreshold;
 		// Find max i gyroskop data
 		dataMax = maxInArray(gyroStaticData, bufferSize);
-		// Normaliser gyroskopdata
-		normalizeArray(gyroStaticData, bufferSize, dataMax);
+		// Find threshold for accelerometerdata
+		double gyroThreshold = dataMax * gyroPeakThreshold;
 		// Beregn FFT af data
 		getAbsoluteSingleFFT(acclStaticData, acclSingleFFT, bufferSize);
 		getAbsoluteSingleFFT(gyroStaticData, gyroSingleFFT, bufferSize);
@@ -374,10 +373,10 @@ void processActivityDataTask(void *pvParameters) {
 		// Find peaks i data
 		switch (activity) {
 			case RUN_WALK: {
-				peakCount = findPeaksInArray(acclStaticData, bufferSize, acclPeakThreshold, acclPeakTimeout);
+				peakCount = findPeaksInArray(acclStaticData, bufferSize, acclThreshold, acclPeakTimeout);
 			} break;
 			case BIKE: {
-				peakCount = findPeaksInArray(gyroStaticData, bufferSize, gyroPeakThreshold, gyroPeakTimeout);
+				peakCount = findPeaksInArray(gyroStaticData, bufferSize, gyroThreshold, gyroPeakTimeout);
 			} break;
 		}
 		// Korriger aktivitet
