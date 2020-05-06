@@ -1,15 +1,20 @@
+// Sikre at biblioteket kun inkluderes en gang
+#ifndef _slaveBLE_
+#define _slaveBLE_
+
 // Biblioketer inklisioner til BLE 
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 //#include <BLEServer.h>
+
 //----------------------------------------------
 // BLE variabler
 // Den service vi gerne vil have forbindelse til, fra den trådløse server.
-BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 // Karateristiken af serveren vi er intereseret i. I dette tilfælde er det modtager og sender UUID.
-BLEUUID serverDataOut_charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8"); // Client reviece, server transmit
-BLEUUID serverDataIn_charUUID("12ee6f51-021d-438f-8094-bf5c5b36eab9"); // Client transmit, server reviece
+static BLEUUID serverDataOut_charUUID("beb5483e-36e1-4688-b7f5-ea07361b26a8"); // Client reviece, server transmit
+static BLEUUID serverDataIn_charUUID("12ee6f51-021d-438f-8094-bf5c5b36eab9"); // Client transmit, server reviece
 
 uint8_t MasterMacAddr[] = {0x24, 0x0A, 0xC4, 0x32, 0x1B, 0x22}; //{0x22, 0x1B, 0x32, 0xC4, 0x0A, 0x24}; // {0x24, 0x0A, 0xC4, 0x32, 0x1B, 0x22}
 //String MasterMACstring = "24:0a:c4:32:1b:22";
@@ -23,10 +28,26 @@ static BLEAddress masterAddress = MasterMacAddr;
 	//(uint8_t*)"\36\10\196\50\27\34");
 // {0x24, 0x0A, 0xC4, 0x32, 0x1B, 0x22});
 
+// Funktions pointers
 void ( *startSampleFuncPointer) ();
 void ( *stopSampleFuncPointer) ();
+
 //----------------------------------------------
 // Funktinoer
+// Connect callback
+class MyClientCallback : public BLEClientCallbacks {
+	void onConnect(BLEClient* pclient) {
+		Serial.println(" - onConnect");
+	}
+
+	void onDisconnect(BLEClient* pclient) {
+		connected = false;
+		stopSampleFuncPointer(); // Stop sampling ved disconnect
+		Serial.println("onDisconnect");
+	}
+};
+
+// Callback funktion
 static void notifyCallback(
   BLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
@@ -49,18 +70,6 @@ static void notifyCallback(
 	}
 	Serial.println(incommingBLE);
 }
-
-class MyClientCallback : public BLEClientCallbacks {
-	void onConnect(BLEClient* pclient) {
-		Serial.println(" - onConnect");
-	}
-
-	void onDisconnect(BLEClient* pclient) {
-		connected = false;
-		stopSampleFuncPointer(); // Stop sampling ved disconnect
-		Serial.println("onDisconnect");
-	}
-};
 
 // laver en connectiong til server
 bool connectToServer() {
@@ -121,3 +130,4 @@ void writeToServer (String message){
 		}
 	}
 }
+#endif

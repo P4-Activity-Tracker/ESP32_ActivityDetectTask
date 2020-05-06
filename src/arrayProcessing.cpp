@@ -1,5 +1,5 @@
 #include <Arduino.h>
-// Inkluder cpp fil (funktions fil)
+// Inkluder header fil (funktions fil)
 #include "arrayProcessing.h"
 
 // Kopier int16_t array til double array

@@ -6,7 +6,7 @@
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include "arduinoFFT.h"
-#include "BLE.h"
+#include "slaveBLE.h"
 #include "arrayProcessing.h"
 
 //----------------------------------------------

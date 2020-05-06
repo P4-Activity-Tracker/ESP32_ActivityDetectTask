@@ -4,7 +4,6 @@
 
 // Inkluder standard biblioteker
 #include <Arduino.h>
-//#include "debuggerAndTester.h"
 
 // Funktioner
 //----------------------------------------------
