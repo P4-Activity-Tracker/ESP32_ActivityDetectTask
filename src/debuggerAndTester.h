@@ -16,7 +16,7 @@
 	#define printFunc_minInArray
 #endif
 
-#define testRunTime
+//#define testRunTime
 #ifdef testRunTime
 	uint32_t sampleStart, sampleStop, procStart, procStop = 0;
 	uint16_t sampleIndex = 0;
@@ -39,13 +39,33 @@
 	}
 #endif
 
-//#define useArrayData
+#define countSteps
+#ifdef countSteps
+	uint16_t steps = 0;
+	#ifndef useArrayData
+		#define useArrayData
+	#endif
+
+#endif
+
+#define useArrayData
 #ifdef useArrayData
 	//#include "jacob_run_knee_omgang1_40sec.h"
-	#include "jacob_bike150_knee_omgang1_40sec.h"
+	//#include "jacob_bike150_knee_omgang1_40sec.h"
+	//#include "Jacob_run_knee_omgang1.h" // 166 skridt
+	//#include "Jacob_walk_knee_omgang1.h" // 120 skridt	
+	//#include "Kenneth_run_knee_omgang1.h" // 154 skridt	
+	//#include "Kenneth_walk_knee_omgang1.h" // 122 skridt	
+	//#include "Nikolaj_run_knee_omgang1.h" //  166 skridt	
+	#include "Nikolaj_walk_knee_omgang1.h" //  166 skridt
 
-	#define arrayDataSize 24000 // Længde af 40 sec rå accl- og gyrodata array
-	uint16_t testDataIndex = 0; // Index tæller for rå data array
+	#define arrayDataSize 36866 + 12288 // Længde af 40 sec rå accl- og gyrodata array
+	uint16_t testDataIndex = 12288; // Index tæller for rå data array
+
+	//#define arrayDataSize 36865 + 9216 // Længde af 40 sec rå accl- og gyrodata array
+	//uint16_t testDataIndex = 0; // Index tæller for rå data array
+
+
 	bool getDataArrayM6(int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz) {
 		*ax = testData[testDataIndex]; // Accl x-akse
 		*ay = testData[testDataIndex + 1]; // Accl y-akse

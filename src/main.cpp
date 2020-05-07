@@ -296,10 +296,12 @@ void setup() {
 // Main loop
 //----------------------------------------------
 void loop() {
-	delay(5000);
-	if (!connected) { // Prøv at forbinde til server, hvis ikke forbundet
-		connectToServer();
-	}
+	#ifndef useArrayData
+		delay(5000);
+		if (!connected) { // Prøv at forbinde til server, hvis ikke forbundet
+			connectToServer();
+		}
+	#endif
 }
 
 /*--------------------------------------------------*/
@@ -329,6 +331,10 @@ void sampleActivityDataTask(void *pvParamaters) {
 		#if defined(useArrayData)
 			// Brug data fil
 			if(!getDataArrayM6(&ax, &ay, &az, &gx, &gy, &gz)) {
+				#ifdef countSteps
+					Serial.print("Total steps in session: ");
+					Serial.println(steps);
+				#endif				
 				vTaskSuspend(NULL);
 			}
 		#else
@@ -424,8 +430,13 @@ void processActivityDataTask(void *pvParameters) {
 			writeToServer(dataOut);
 		#endif
 		#ifdef useDebug
-			//Serial.println("Data processing done");
-			//Serial.println();
+			Serial.println("Data processing done");
+			Serial.println();
+		#endif
+		#ifdef countSteps
+			steps = steps + peakCount * 2;
+			Serial.print("Total steps now: ");
+			Serial.println(steps);
 		#endif
 		// Klargør task til næste data processering
 		peakCount = 0;
