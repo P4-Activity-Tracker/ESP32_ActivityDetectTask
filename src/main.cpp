@@ -58,6 +58,9 @@ const uint16_t fftIndexSummed = (((bufferSize / fs) * sumFreq) + 1);
 	#include "debuggerAndTester.h"
 #endif
 
+#define noActivityThresholdAccl 5500
+#define noActivityThresholdGyro 200
+
 //----------------------------------------------
 // Variable definationer
 // Aktivitets typer (som numbereret liste via enum)
@@ -393,37 +396,46 @@ void processActivityDataTask(void *pvParameters) {
 			//Serial.println("Running data processing");
 		#endif
 		// Find max i accelerometerdata
-		double dataMax = maxInArray(acclStaticData, bufferSize);
+		double dataMaxAccl = maxInArray(acclStaticData, bufferSize);
 		// Find threshold for accelerometerdata
-		double acclThreshold = dataMax * acclPeakThreshold;
+		double acclThreshold = dataMaxAccl * acclPeakThreshold;
 		// Find max i gyroskop data
-		dataMax = maxInArray(gyroStaticData, bufferSize);
+		double dataMaxGyro = maxInArray(gyroStaticData, bufferSize);
 		// Find threshold for accelerometerdata
-		double gyroThreshold = dataMax * gyroPeakThreshold;
-		// Beregn FFT af data
-		getAbsoluteSingleFFT(acclStaticData, acclSingleFFT, bufferSize);
-		getAbsoluteSingleFFT(gyroStaticData, gyroSingleFFT, bufferSize);
-		// Fjern DC fra FFT
-		setArrayTo(acclSingleFFT, 5, 0); 
-		setArrayTo(gyroSingleFFT, 5, 0); 
-		// Find sum under hzIndex og over hzIndex
-		double acclBelowSum = arraySum(acclSingleFFT, 0, fftIndexSummed);
-		double acclAboveSum = arraySum(acclSingleFFT, fftIndexSummed, singleSize);
-		double gyroBelowSum = arraySum(gyroSingleFFT, 0, fftIndexSummed);
-		double gyroAboveSum = arraySum(gyroSingleFFT, fftIndexSummed, singleSize);
-		// Gæt aktivitet baseret på FFT
-		activity = estimateActivity(&acclBelowSum, &acclAboveSum, &gyroBelowSum, &gyroAboveSum);
-		// Find peaks i data
-		switch (activity) {
-			case RUN_WALK: {
-				peakCount = findPeaksInArray(acclStaticData, bufferSize, acclThreshold, acclPeakTimeout);
-			} break;
-			case BIKE: {
-				peakCount = findPeaksInArray(gyroStaticData, bufferSize, gyroThreshold, gyroPeakTimeout);
-			} break;
+		double gyroThreshold = dataMaxGyro * gyroPeakThreshold;
+		// Hvis ingen signifikante udsving, stop
+		if (dataMaxAccl > noActivityThresholdAccl && dataMaxGyro > noActivityThresholdGyro) {
+			// Beregn FFT af data
+			getAbsoluteSingleFFT(acclStaticData, acclSingleFFT, bufferSize);
+			getAbsoluteSingleFFT(gyroStaticData, gyroSingleFFT, bufferSize);
+			// Fjern DC fra FFT
+			setArrayTo(acclSingleFFT, 5, 0); 
+			setArrayTo(gyroSingleFFT, 5, 0); 
+			// Find sum under hzIndex og over hzIndex
+			double acclBelowSum = arraySum(acclSingleFFT, 0, fftIndexSummed);
+			double acclAboveSum = arraySum(acclSingleFFT, fftIndexSummed, singleSize);
+			double gyroBelowSum = arraySum(gyroSingleFFT, 0, fftIndexSummed);
+			double gyroAboveSum = arraySum(gyroSingleFFT, fftIndexSummed, singleSize);
+			// Gæt aktivitet baseret på FFT
+			activity = estimateActivity(&acclBelowSum, &acclAboveSum, &gyroBelowSum, &gyroAboveSum);
+			// Find peaks i data
+			switch (activity) {
+				case RUN_WALK: {
+					peakCount = findPeaksInArray(acclStaticData, bufferSize, acclThreshold, acclPeakTimeout);
+				} break;
+				case BIKE: {
+					peakCount = findPeaksInArray(gyroStaticData, bufferSize, gyroThreshold, gyroPeakTimeout);
+				} break;
+			}
+			// Korriger aktivitet
+			activity = specifyActivity(activity, peakCount);
+			// Sæt peaks til nul, hvis cykling
+			if (activity == BIKE_SLOW || activity == BIKE_FAST || activity == BIKE) {
+				peakCount = 0;
+			}
+		} else {
+			Serial.println("No activity detected.");
 		}
-		// Korriger aktivitet
-		activity = specifyActivity(activity, peakCount);
 		#ifndef useArrayData
 			// Her benyttes fuktionen "dataToCharacters" til activity og peakcount, hvor det gemmes i "dataOut" som derefter skrives til med funktionen "writeToServer"
 			String dataOut = dataToCharacters(activity,1) + dataToCharacters(peakCount,2);

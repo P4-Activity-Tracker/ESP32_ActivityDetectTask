@@ -39,7 +39,7 @@
 	}
 #endif
 
-#define countSteps
+//#define countSteps
 #ifdef countSteps
 	uint16_t steps = 0;
 	#ifndef useArrayData
@@ -48,7 +48,7 @@
 
 #endif
 
-#define useArrayData
+//#define useArrayData
 #ifdef useArrayData
 	//#include "jacob_run_knee_omgang1_40sec.h"
 	//#include "jacob_bike150_knee_omgang1_40sec.h"
